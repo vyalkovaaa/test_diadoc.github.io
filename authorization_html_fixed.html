@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Маппинг ролей Диадока</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--ink:#20242b;--muted:#667085;--line:#d9dee7;--blue:#2563eb;--err:#dc2626;--err-bg:#fef2f2}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+header{background:#fff;border-bottom:1px solid var(--line);padding:26px 20px}header>div,main{max-width:900px;margin:auto}
+h1{font-size:26px;margin:0 0 6px}header p,.hint{color:var(--muted);margin:0;font-size:14px}
+main{padding:22px 16px 50px}.org{background:#fff;border:1px solid var(--line);border-radius:11px;padding:18px;margin-bottom:15px}
+.org-head,.role-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.org-head h2{font-size:19px;margin:0}.role-head h3{font-size:16px;margin:0}
+input[type=text],textarea{width:100%;border:1px solid #c9cfda;border-radius:7px;padding:9px 10px;font:inherit;color:var(--ink);background:white;transition:border-color .15s,background .15s}
+textarea{min-height:76px;resize:vertical}.field{display:flex;flex-direction:column;gap:5px}.field label{font-weight:650;font-size:13px}
+.label-hint{color:var(--muted);font-weight:400;font-size:12px}
+.org-identifiers{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 0 14px}
+.choice-list{display:grid;grid-template-columns:1fr;gap:8px;border:1px solid #c9cfda;border-radius:7px;padding:10px;background:#fff;transition:border-color .15s,background .15s}
+.choice{display:flex;gap:8px;align-items:flex-start;font-weight:400!important;font-size:14px!important}.choice input{margin-top:4px;accent-color:var(--blue)}[hidden]{display:none!important}
+.org-name{margin:14px 0}.role{border:1px solid var(--line);border-radius:9px;padding:14px;margin:12px 0;background:#fcfcfd}
+.role-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.field.full{grid-column:1/-1}
+.checks{display:flex;flex-wrap:wrap;gap:12px 20px;margin-top:12px}.check{display:flex;gap:8px;align-items:center;font-size:14px}.check input{accent-color:var(--blue)}
+button{border:0;border-radius:7px;padding:9px 13px;font:600 14px inherit;cursor:pointer}.primary{background:var(--blue);color:white}.secondary{background:#edf1f6;color:#273244}.danger{background:#fff0f0;color:#a32626}.small{padding:6px 9px;font-size:12px}
+.actions{display:flex;gap:9px;flex-wrap:wrap;margin:18px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#111827;color:#dce6f4;border-radius:8px;padding:14px;font:12px/1.55 ui-monospace,Consolas,monospace;max-height:440px;overflow:auto}
+.result{background:white;border:1px solid var(--line);border-radius:10px;padding:16px}.result h2{font-size:17px;margin:0 0 10px}
+.role-info{margin-top:14px}
+.info-line{font:13px/1.55 ui-monospace,Consolas,monospace;color:#20242b;overflow-wrap:anywhere}
+.field-error{display:none;color:var(--err);font-size:12px;line-height:1.4;margin-top:2px}
+.field-error.show{display:block}
+.field.has-error>input[type=text],
+.field.has-error>textarea,
+.field.has-error>.choice-list{border-color:var(--err);background:var(--err-bg)}
+@media(max-width:650px){.role-grid,.org-identifiers{grid-template-columns:1fr}.field.full{grid-column:auto}.org-head,.role-head{align-items:flex-start}}
+</style>
+</head>
+<body>
+<header><div>
+<h1>Маппинг ролей Диадока</h1>
+<p>Укажите организации и настройте набор прав для каждой роли.</p>
+</div></header>
+<main>
+<div id="organizations"></div>
+<div class="actions">
+<button class="primary" type="button" id="addOrg">+ Добавить организацию</button>
+</div>
+<section class="org" id="globalRestrictions" hidden>
+ <div class="org-head"><h2>Запрещённые действия администратора</h2></div>
+ <p class="hint" style="margin:8px 0 12px">Общие ограничения для всего провайдера. Применяются ко всем организациям и ролям.</p>
+ <div class="field"><div class="choice-list" id="globalForbiddenList"></div></div>
+</section>
+<div class="actions">
+<button class="secondary" type="button" id="generate">Сформировать JSON</button>
+<button class="secondary" type="button" id="download">Скачать JSON</button>
+</div>
+<div class="result">
+<h2>Результат JSON</h2>
+<div class="actions" style="margin:0 0 10px"><button class="secondary small" type="button" id="copy">Копировать</button></div>
+<pre id="output">Добавьте организацию и роль, затем сформируйте JSON.</pre>
+</div>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const RIGHTS=[
+ "Создавать и редактировать документы",
+ "Удалять документы и черновики, восстанавливать документы",
+ "Подписывать документы",
+ "Согласовывать документы",
+ "Передавать на подпись и согласование",
+ "Работать с разделом «Контрагенты»",
+ "Администрировать организацию",
+ "Создавать и отправлять платежки в банки",
+ "Использовать УКЭП Госключ"
+];
+const FORBIDDEN_ACTIONS=[
+ "Создание сотрудника",
+ "Удаление сотрудника",
+ "Блокировка сотрудника",
+ 'Изменения прав сотрудника (блок "Пользователь может" в карточке сотрудника в вебе)',
+ 'Изменение доступа к документам (блок "Доступ к документам" в карточке сотрудника в вебе)',
+ "Предоставление и лишение прав администратора"
+];
+const DOCUMENT_ACCESS=[
+ "Только к документам своего подразделения",
+ "К документам своего и дочерних подразделений",
+ "Ко всем документам",
+ "К документам разных подразделений"
+];
+/* организация: латиница/цифры/-/_/. БЕЗ пробела */
+const RE_ORG_NAME=/^[A-Za-z0-9_\-\.]+$/;
+/* роль: латиница/цифры/пробел/-/_/. */
+const RE_ROLE_NAME=/^[A-Za-z0-9 _\-\.]+$/;
+const RE_HAS_LATIN_LETTER=/[A-Za-z]/;
+const RE_INN=/^\d{10}$|^\d{12}$/;
+const RE_KPP=/^\d{9}$/;
+
+let orgCounter=0, roleCounter=0;
+let submitted=false;
+
+function choiceHtml(group,item,index){
+ const id=`${group}-${Math.random().toString(36).slice(2)}-${index}`;
+ return `<label class="choice"><input type="checkbox" data-choice="${group}" value="${item.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"><span>${item}</span></label>`;
+}
+function selectedValues(container,group){
+ return [...container.querySelectorAll(`[data-choice="${group}"]:checked`)].map(input=>input.value);
+}
+
+/* -------- ошибки полей -------- */
+function setFieldError(fieldEl, msg, show){
+ if(!fieldEl) return !msg;
+ let err=fieldEl._errorEl;
+ if(!err){
+  err=document.createElement('div');
+  err.className='field-error';
+  fieldEl.appendChild(err);
+  fieldEl._errorEl=err;
+ }
+ if(msg && show){
+  err.textContent=msg;
+  err.classList.add('show');
+  fieldEl.classList.add('has-error');
+ }else{
+  err.textContent='';
+  err.classList.remove('show');
+  fieldEl.classList.remove('has-error');
+ }
+ return !msg;
+}
+
+/* -------- валидаторы -------- */
+function validateOrgName(inp){
+ const v=inp.value.trim();
+ let msg=null;
+ if(!v) msg='Укажите название организации';
+ else if(!RE_ORG_NAME.test(v)) msg='Только латиница, цифры, «-», «_», «.» — без пробелов';
+ else if(!RE_HAS_LATIN_LETTER.test(v)) msg='Должна быть хотя бы одна латинская буква';
+ return setFieldError(inp.closest('.field'),msg,submitted);
+}
+function validateRoleName(inp){
+ const v=inp.value.trim();
+ let msg=null;
+ if(!v) msg='Укажите название роли';
+ else if(!RE_ROLE_NAME.test(v)) msg='Только латиница, цифры, пробел, «-», «_», «.»';
+ else if(!RE_HAS_LATIN_LETTER.test(v)) msg='Должна быть хотя бы одна латинская буква';
+ return setFieldError(inp.closest('.field'),msg,submitted);
+}
+function validateOrgInn(inp){
+ const v=inp.value.trim();
+ let msg=null;
+ if(!v) msg='Укажите ИНН';
+ else if(!RE_INN.test(v)) msg='ИНН должен содержать 10 или 12 цифр';
+ return setFieldError(inp.closest('.field'),msg,submitted);
+}
+function validateOrgKpp(inp){
+ const v=inp.value.trim();
+ let msg=null;
+ if(v && !RE_KPP.test(v)) msg='КПП должен содержать 9 цифр';
+ return setFieldError(inp.closest('.field'),msg,submitted);
+}
+
+function validateRole(roleEl){
+ return validateRoleName(roleEl.querySelector('[data-role-name]'));
+}
+function validateOrg(orgEl){
+ let ok=true;
+ ok=validateOrgName(orgEl.querySelector('[data-org-name]'))&&ok;
+ ok=validateOrgInn(orgEl.querySelector('[data-org-inn]'))&&ok;
+ ok=validateOrgKpp(orgEl.querySelector('[data-org-kpp]'))&&ok;
+ orgEl.querySelectorAll('.role').forEach(r=>{if(!validateRole(r)) ok=false;});
+ return ok;
+}
+function validateAll(){
+ submitted=true;
+ let ok=true, firstError=null;
+ document.querySelectorAll('#organizations > .org').forEach(org=>{
+  if(!validateOrg(org)){
+   ok=false;
+   if(!firstError) firstError=org.querySelector('.has-error');
+  }
+ });
+ if(!ok && firstError) firstError.scrollIntoView({behavior:'smooth',block:'center'});
+ return ok;
+}
+
+/* -------- информационные поля -------- */
+function updateRoleInfo(roleEl){
+ const orgEl=roleEl.closest('.org');
+ if(!orgEl) return;
+ const orgName=orgEl.querySelector('[data-org-name]').value.trim()||'—';
+ const roleName=roleEl.querySelector('[data-role-name]').value.trim()||'—';
+ const box=roleEl.querySelector('[data-role-info]');
+ if(box) box.textContent=`app-diadoc/${orgName}/${roleName}`;
+}
+function updateAllRolesInfo(orgEl){
+ orgEl.querySelectorAll('.role').forEach(updateRoleInfo);
+}
+
+/* Показываем общие ограничения, только если есть хотя бы одна роль-администратор. */
+function updateGlobalRestrictionsVisibility(){
+ const hasAdministrator=!!document.querySelector('.role [data-admin]:checked');
+ $('#globalRestrictions').hidden=!hasAdministrator;
+}
+
+/* -------- построение DOM -------- */
+function addOrganization(){
+ const id=++orgCounter;
+ const el=document.createElement('section');
+ el.className='org';el.dataset.orgId=id;
+ el.innerHTML=`
+  <div class="org-head"><h2>Организация ${id}</h2><button type="button" class="danger small remove-org">Удалить организацию</button></div>
+  <div class="field org-name"><label>Название организации <span class="label-hint">(только латиница, без пробелов)</span></label><input type="text" data-org-name placeholder=""></div>
+  <div class="org-identifiers">
+   <div class="field"><label>ИНН</label><input type="text" data-org-inn inputmode="numeric" placeholder="ИНН организации"></div>
+   <div class="field"><label>КПП <span class="label-hint">(необязательно)</span></label><input type="text" data-org-kpp inputmode="numeric" placeholder="КПП организации"></div>
+  </div>
+  <div class="roles"></div>
+  <button type="button" class="secondary small add-role">+ Добавить роль</button>`;
+ $('#organizations').append(el);
+ el.querySelector('.remove-org').onclick=()=>{el.remove();updateGlobalRestrictionsVisibility()};
+ el.querySelector('.add-role').onclick=()=>addRole(el.querySelector('.roles'));
+
+ el.addEventListener('input',e=>{
+  const t=e.target;
+  if(t.matches('[data-org-name]')){
+   if(submitted) validateOrgName(t);
+   updateAllRolesInfo(el);
+  }else if(t.matches('[data-org-inn]')){
+   if(submitted) validateOrgInn(t);
+  }else if(t.matches('[data-org-kpp]')){
+   if(submitted) validateOrgKpp(t);
+  }else if(t.matches('[data-role-name]')){
+   if(submitted) validateRoleName(t);
+   updateRoleInfo(t.closest('.role'));
+  }
+ });
+
+ addRole(el.querySelector('.roles'));
+}
+function addRole(container){
+ const id=++roleCounter;
+ const el=document.createElement('div');el.className='role';el.dataset.roleId=id;
+ el.innerHTML=`
+  <div class="role-head"><h3>Роль ${container.children.length+1}</h3><button type="button" class="danger small remove-role">Удалить роль</button></div>
+  <div class="role-grid">
+   <div class="field full"><label>Название роли <span class="label-hint">(только латиница)</span></label><input type="text" data-role-name placeholder="например, admin"></div>
+   <div class="field full"><label>Набор прав для роли <span class="label-hint">(необязательно)</span></label><div class="choice-list" data-rights-list></div></div>
+   <div class="field full"><label>Доступ до документов <span class="label-hint">(необязательно)</span></label><div class="choice-list" data-doc-access-list></div></div>
+  </div>
+  <div class="checks">
+   <label class="check"><input type="checkbox" data-admin> Признак администратора</label>
+  </div>
+  <div class="field role-info">
+   <label>Значение, которое надо передавать</label>
+   <div class="choice-list"><span class="info-line" data-role-info>app-diadoc/—/—</span></div>
+  </div>`;
+ container.append(el);
+ el.querySelector('[data-rights-list]').innerHTML=RIGHTS.map((item,i)=>choiceHtml('rights',item,i)).join('');
+ el.querySelector('[data-doc-access-list]').innerHTML=DOCUMENT_ACCESS.map((item,i)=>choiceHtml('document-access',item,i)).join('');
+ el.querySelector('[data-admin]').addEventListener('change',updateGlobalRestrictionsVisibility);
+ el.querySelector('.remove-role').onclick=()=>{el.remove();updateGlobalRestrictionsVisibility()};
+ updateRoleInfo(el);
+}
+
+/* -------- JSON -------- */
+function splitLines(value){return value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean)}
+function build(){
+ return {
+  schemaVersion:"1.0",
+  organizations:[...document.querySelectorAll('#organizations > .org')].map(org=>({
+   name:org.querySelector('[data-org-name]').value.trim(),
+   inn:org.querySelector('[data-org-inn]').value.trim(),
+   kpp:org.querySelector('[data-org-kpp]').value.trim(),
+   roles:[...org.querySelectorAll('.role')].map(role=>({
+    name:role.querySelector('[data-role-name]').value.trim(),
+    rights:selectedValues(role,'rights'),
+    documentAccess:selectedValues(role,'document-access'),
+    isAdministrator:role.querySelector('[data-admin]').checked
+   }))
+  })),
+  restrictedActions:document.querySelector('.role [data-admin]:checked')
+   ? selectedValues($('#globalForbiddenList'),'forbidden') : []
+ };
+}
+function render(){const json=JSON.stringify(build(),null,2);$('#output').textContent=json;return json}
+
+/* -------- действия -------- */
+$('#addOrg').onclick=addOrganization;
+
+$('#generate').onclick=()=>{
+ if(!validateAll()){
+  $('#output').textContent='Исправьте ошибки в форме, чтобы сформировать JSON.';
+  return;
+ }
+ render();
+};
+
+$('#download').onclick=()=>{
+ if(!validateAll()){
+  $('#output').textContent='Исправьте ошибки в форме, чтобы скачать JSON.';
+  return;
+ }
+ const json=render();
+ const blob=new Blob([json],{type:'application/json;charset=utf-8'});
+ const a=document.createElement('a');
+ const url=URL.createObjectURL(blob);
+ a.href=url;
+ a.download='diadoc-role-mapping.json';
+ document.body.appendChild(a);
+ a.click();
+ a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
+
+$('#copy').onclick=async()=>{
+ if(!validateAll()){
+  $('#output').textContent='Исправьте ошибки в форме, чтобы скопировать JSON.';
+  return;
+ }
+ try{
+  await navigator.clipboard.writeText(render());
+  $('#copy').textContent='Скопировано';
+  setTimeout(()=>$('#copy').textContent='Копировать',1300);
+ }catch(e){
+  $('#copy').textContent='Ошибка копирования';
+ }
+};
+
+$('#globalForbiddenList').innerHTML=FORBIDDEN_ACTIONS.map((item,i)=>choiceHtml('forbidden',item,i)).join('');
+addOrganization();
+</script>
+</body>
+</html>
